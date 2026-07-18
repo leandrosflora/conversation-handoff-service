@@ -5,7 +5,10 @@ namespace conversation_handoff_service.Application.Ports.Outbound;
 public interface IHandoffRequestRepository
 {
     /// <summary>Throws <see cref="HandoffRequestRepositoryUnavailableException"/> if PostgreSQL cannot be reached.</summary>
-    Task InsertAsync(HandoffRequestRecord request, CancellationToken cancellationToken);
+    Task InsertAsync(
+        HandoffRequestRecord request,
+        string idempotencyKey,
+        CancellationToken cancellationToken);
 }
 
 public class HandoffRequestRepositoryUnavailableException(string message, Exception innerException)
