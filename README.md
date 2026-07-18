@@ -1,82 +1,82 @@
-# Conversation Handoff Service
+# Serviço de Transferência de Conversas
 
-A lightweight ASP.NET Core service responsible for recording requests to transfer an automated conversation to a human-support queue.
+Serviço leve em ASP.NET Core responsável por registrar solicitações de transferência de uma conversa automatizada para uma fila de atendimento humano.
 
-The service exposes a single HTTP endpoint, validates the handoff request, persists it in PostgreSQL, and exports distributed traces through OpenTelemetry.
+O serviço expõe um único endpoint HTTP, valida a solicitação de transferência, persiste os dados no PostgreSQL e exporta rastreamentos distribuídos por meio do OpenTelemetry.
 
-## What this service does
+## O que este serviço faz
 
-- Receives handoff requests through `POST /handoffs`.
-- Validates the conversation identifier and handoff reason.
-- Persists the request in `conversation.handoffs`.
-- Routes handoffs to the fixed `human-support` target queue.
-- Returns `503 Service Unavailable` when PostgreSQL cannot be reached.
-- Exports ASP.NET Core and Npgsql traces through OTLP.
-- Adds trace, span, and parent identifiers to application logs.
+- Recebe solicitações de transferência por meio do endpoint `POST /handoffs`.
+- Valida o identificador da conversa e o motivo da transferência.
+- Persiste a solicitação na tabela `conversation.handoffs`.
+- Direciona as transferências para a fila fixa `human-support`.
+- Retorna `503 Service Unavailable` quando o PostgreSQL não está acessível.
+- Exporta rastreamentos do ASP.NET Core e do Npgsql por OTLP.
+- Adiciona identificadores de trace, span e parent aos logs da aplicação.
 
-## Architecture
+## Arquitetura
 
-The code is organized using ports and adapters (hexagonal architecture):
+O código está organizado utilizando portas e adaptadores, seguindo os princípios da arquitetura hexagonal:
 
 ```mermaid
 flowchart LR
-    Client[Client or AI Agent] -->|POST /handoffs| HTTP[HTTP Inbound Adapter]
-    HTTP --> UC[Record Handoff Request Use Case]
-    UC --> PORT[Handoff Repository Port]
-    PORT --> PG[PostgreSQL Outbound Adapter]
+    Client[Cliente ou agente de IA] -->|POST /handoffs| HTTP[Adaptador HTTP de entrada]
+    HTTP --> UC[Caso de uso de registro de transferência]
+    UC --> PORT[Porta do repositório de transferências]
+    PORT --> PG[Adaptador PostgreSQL de saída]
     PG --> DB[(conversation.handoffs)]
 
-    HTTP -. traces .-> OTEL[OpenTelemetry Collector]
-    PG -. traces .-> OTEL
+    HTTP -. rastreamentos .-> OTEL[Coletor OpenTelemetry]
+    PG -. rastreamentos .-> OTEL
 ```
 
-### Request flow
+### Fluxo da solicitação
 
 ```mermaid
 sequenceDiagram
-    participant Client
-    participant API as Handoff API
+    participant Client as Cliente
+    participant API as API de transferência
     participant UseCase as RecordHandoffRequestUseCase
     participant PostgreSQL
 
     Client->>API: POST /handoffs
-    API->>API: Validate conversationId and reason
-    API->>UseCase: Execute handoff request
-    UseCase->>PostgreSQL: INSERT conversation.handoffs
+    API->>API: Valida conversationId e reason
+    API->>UseCase: Executa a solicitação de transferência
+    UseCase->>PostgreSQL: INSERT em conversation.handoffs
 
-    alt Request persisted
-        PostgreSQL-->>UseCase: Success
+    alt Solicitação persistida
+        PostgreSQL-->>UseCase: Sucesso
         UseCase-->>API: Recorded
         API-->>Client: 202 Accepted
-    else PostgreSQL unavailable
-        PostgreSQL--xUseCase: Connection or timeout failure
+    else PostgreSQL indisponível
+        PostgreSQL--xUseCase: Falha de conexão ou timeout
         UseCase-->>API: RepositoryUnavailable
         API-->>Client: 503 Service Unavailable
     end
 ```
 
-## Technology stack
+## Stack tecnológica
 
-| Area | Technology |
+| Área | Tecnologia |
 |---|---|
 | Runtime | .NET 8 |
 | API | ASP.NET Core Minimal APIs |
-| API documentation | Swagger / OpenAPI |
-| Database | PostgreSQL |
-| Data access | Npgsql |
-| Observability | OpenTelemetry + OTLP |
-| Containerization | Docker multi-stage build |
+| Documentação da API | Swagger / OpenAPI |
+| Banco de dados | PostgreSQL |
+| Acesso a dados | Npgsql |
+| Observabilidade | OpenTelemetry + OTLP |
+| Conteinerização | Build Docker em múltiplos estágios |
 
-## API reference
+## Referência da API
 
-### Record a handoff request
+### Registrar uma solicitação de transferência
 
 ```http
 POST /handoffs
 Content-Type: application/json
 ```
 
-#### Request body
+#### Corpo da solicitação
 
 ```json
 {
@@ -85,21 +85,21 @@ Content-Type: application/json
 }
 ```
 
-| Field | Type | Required | Description |
+| Campo | Tipo | Obrigatório | Descrição |
 |---|---|---:|---|
-| `conversationId` | string | Yes | Identifier of the conversation being transferred. |
-| `reason` | string | Yes | Reason for transferring the conversation to human support. |
+| `conversationId` | string | Sim | Identificador da conversa que será transferida. |
+| `reason` | string | Sim | Motivo da transferência da conversa para o atendimento humano. |
 
-#### Responses
+#### Respostas
 
-| Status | Meaning |
+| Status | Significado |
 |---:|---|
-| `202 Accepted` | The handoff request was persisted successfully. |
-| `400 Bad Request` | `conversationId` or `reason` is empty or missing. |
-| `503 Service Unavailable` | PostgreSQL is unavailable or timed out. |
-| `500 Internal Server Error` | An unexpected application failure occurred. |
+| `202 Accepted` | A solicitação de transferência foi persistida com sucesso. |
+| `400 Bad Request` | O campo `conversationId` ou `reason` está vazio ou não foi informado. |
+| `503 Service Unavailable` | O PostgreSQL está indisponível ou excedeu o tempo limite. |
+| `500 Internal Server Error` | Ocorreu uma falha inesperada na aplicação. |
 
-#### Example
+#### Exemplo
 
 ```bash
 curl --request POST \
@@ -111,18 +111,18 @@ curl --request POST \
   }'
 ```
 
-## Persistence behavior
+## Comportamento da persistência
 
-The current implementation writes the following data to `conversation.handoffs`:
+A implementação atual grava os seguintes dados na tabela `conversation.handoffs`:
 
-| Column | Value |
+| Coluna | Valor |
 |---|---|
 | `conversation_id` | `70000000-0000-0000-0000-000000000001` |
-| `reason` | Value received in the request. |
+| `reason` | Valor recebido na solicitação. |
 | `target_queue` | `human-support` |
-| `metadata` | JSON containing the original conversation identifier. |
+| `metadata` | JSON contendo o identificador original da conversa. |
 
-Example metadata:
+Exemplo de `metadata`:
 
 ```json
 {
@@ -131,57 +131,57 @@ Example metadata:
 ```
 
 > [!IMPORTANT]
-> The real external conversation identifier is currently stored in `metadata`. The `conversation_id` foreign key uses a fixed seed record because this service does not create records in `conversation.conversations`.
+> O identificador real da conversa externa é armazenado atualmente em `metadata`. A chave estrangeira `conversation_id` utiliza um registro seed fixo porque este serviço não cria registros na tabela `conversation.conversations`.
 
-The database must already contain:
+O banco de dados deve conter previamente:
 
-- The `conversation` schema.
-- The `conversation.handoffs` table.
-- A compatible row in `conversation.conversations` with ID `70000000-0000-0000-0000-000000000001`.
+- O schema `conversation`.
+- A tabela `conversation.handoffs`.
+- Um registro compatível na tabela `conversation.conversations` com o ID `70000000-0000-0000-0000-000000000001`.
 
-Database migrations are not included in this repository.
+As migrations do banco de dados não estão incluídas neste repositório.
 
-## Configuration
+## Configuração
 
-Configuration can be supplied through `appsettings.json`, environment-specific files, or environment variables.
+As configurações podem ser fornecidas pelo arquivo `appsettings.json`, por arquivos específicos de ambiente ou por variáveis de ambiente.
 
-| Setting | Environment variable | Default |
+| Configuração | Variável de ambiente | Valor padrão |
 |---|---|---|
-| PostgreSQL connection string | `Postgres__ConnectionString` | `Host=localhost;Port=5432;Database=conversational_ai;Username=postgres;Password=postgres` |
-| OTLP endpoint | `Otel__OtlpEndpoint` | `http://localhost:4317` |
+| String de conexão do PostgreSQL | `Postgres__ConnectionString` | `Host=localhost;Port=5432;Database=conversational_ai;Username=postgres;Password=postgres` |
+| Endpoint OTLP | `Otel__OtlpEndpoint` | `http://localhost:4317` |
 
-The PostgreSQL connection and command timeouts are limited to five seconds so database failures are returned quickly as `503 Service Unavailable`.
+Os timeouts de conexão e de comando do PostgreSQL estão limitados a cinco segundos para que falhas no banco sejam retornadas rapidamente como `503 Service Unavailable`.
 
-## Run locally
+## Executar localmente
 
-### Prerequisites
+### Pré-requisitos
 
-- .NET 8 SDK
-- PostgreSQL with the required schema and seed record
-- An OTLP-compatible collector, such as Jaeger or the OpenTelemetry Collector, when trace export is required
+- .NET 8 SDK.
+- PostgreSQL com o schema, as tabelas e o registro seed necessários.
+- Um coletor compatível com OTLP, como Jaeger ou OpenTelemetry Collector, quando a exportação de rastreamentos for necessária.
 
-### Start the service
+### Iniciar o serviço
 
 ```bash
 dotnet restore
 dotnet run --launch-profile http
 ```
 
-The HTTP profile starts the service at:
+O profile HTTP inicia o serviço em:
 
 ```text
 http://localhost:5259
 ```
 
-Swagger is available in the Development environment at:
+O Swagger fica disponível no ambiente de desenvolvimento em:
 
 ```text
 http://localhost:5259/swagger
 ```
 
-### Override configuration
+### Sobrescrever as configurações
 
-Linux or macOS:
+Linux ou macOS:
 
 ```bash
 export Postgres__ConnectionString='Host=localhost;Port=5432;Database=conversational_ai;Username=postgres;Password=postgres'
@@ -197,15 +197,15 @@ $env:Otel__OtlpEndpoint = 'http://localhost:4317'
 dotnet run --launch-profile http
 ```
 
-## Run with Docker
+## Executar com Docker
 
-### Build the image
+### Criar a imagem
 
 ```bash
 docker build -t conversation-handoff-service .
 ```
 
-### Start the container
+### Iniciar o container
 
 ```bash
 docker run --rm \
@@ -216,31 +216,31 @@ docker run --rm \
   conversation-handoff-service
 ```
 
-The endpoint will be available at:
+O endpoint ficará disponível em:
 
 ```text
 http://localhost:8080/handoffs
 ```
 
-On Linux, reaching services running on the host may require:
+No Linux, o acesso a serviços executados no host pode exigir o seguinte parâmetro:
 
 ```bash
 --add-host=host.docker.internal:host-gateway
 ```
 
-## Observability
+## Observabilidade
 
-The service configures OpenTelemetry with:
+O serviço configura o OpenTelemetry com:
 
-- ASP.NET Core request instrumentation.
-- Npgsql database instrumentation.
-- OTLP trace export.
-- Service name `conversation-handoff-service`.
-- `TraceId`, `SpanId`, and `ParentId` correlation in console logs.
+- Instrumentação das solicitações do ASP.NET Core.
+- Instrumentação das operações de banco de dados do Npgsql.
+- Exportação de rastreamentos por OTLP.
+- Nome do serviço definido como `conversation-handoff-service`.
+- Correlação de `TraceId`, `SpanId` e `ParentId` nos logs do console.
 
-The database span is especially relevant because persistence latency and availability determine whether the endpoint returns `202` or `503`.
+O span de banco de dados é especialmente relevante porque a latência e a disponibilidade da persistência determinam se o endpoint retorna `202` ou `503`.
 
-## Project structure
+## Estrutura do projeto
 
 ```text
 .
@@ -266,22 +266,22 @@ The database span is especially relevant because persistence latency and availab
 └── conversation-handoff-service.csproj
 ```
 
-## Current limitations
+## Limitações atuais
 
-- The service uses a fixed internal conversation ID for every handoff.
-- The target queue is hardcoded as `human-support`.
-- There is no authentication or authorization.
-- There is no idempotency mechanism.
-- Database migrations are managed outside this repository.
-- There are no health-check endpoints.
-- Persistence failures are not retried.
+- O serviço utiliza um identificador interno fixo de conversa para todas as transferências.
+- A fila de destino está fixa como `human-support`.
+- Não existe autenticação ou autorização.
+- Não existe mecanismo de idempotência.
+- As migrations do banco de dados são gerenciadas fora deste repositório.
+- Não existem endpoints de health check.
+- Falhas de persistência não são submetidas a novas tentativas.
 
-## Recommended next steps
+## Próximos passos recomendados
 
-1. Replace the seed conversation workaround with a real conversation ownership or integration strategy.
-2. Make the target queue configurable or resolve it through routing rules.
-3. Add authentication, authorization, and rate limiting.
-4. Add idempotency to prevent duplicate handoff records.
-5. Add database migrations and integration tests.
-6. Add readiness and liveness health checks.
-7. Add resilience policies and operational metrics.
+1. Substituir o uso do registro seed por uma estratégia real de propriedade ou integração de conversas.
+2. Tornar a fila de destino configurável ou resolvê-la por regras de roteamento.
+3. Adicionar autenticação, autorização e rate limiting.
+4. Adicionar idempotência para impedir registros duplicados de transferência.
+5. Adicionar migrations de banco de dados e testes de integração.
+6. Adicionar health checks de readiness e liveness.
+7. Adicionar políticas de resiliência e métricas operacionais.
