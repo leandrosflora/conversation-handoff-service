@@ -4,7 +4,10 @@ namespace conversation_handoff_service.Application.Ports.Inbound;
 
 public interface IRecordHandoffRequestUseCase
 {
-    Task<RecordHandoffRequestResult> ExecuteAsync(HandoffRequestRecord request, CancellationToken cancellationToken);
+    Task<RecordHandoffRequestResult> ExecuteAsync(
+        HandoffRequestRecord request,
+        string idempotencyKey,
+        CancellationToken cancellationToken);
 }
 
 public enum RecordHandoffRequestResult
