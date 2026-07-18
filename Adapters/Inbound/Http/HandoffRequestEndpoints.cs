@@ -13,9 +13,16 @@ public static class HandoffRequestEndpoints
 
     private static async Task<IResult> HandleAsync(
         HandoffRequestDto request,
+        HttpRequest httpRequest,
         IRecordHandoffRequestUseCase useCase,
         CancellationToken cancellationToken)
     {
+        var idempotencyKey = httpRequest.Headers["Idempotency-Key"].ToString();
+        if (string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            return Results.BadRequest(new { error = "Idempotency-Key header is required." });
+        }
+
         if (string.IsNullOrWhiteSpace(request.ConversationId))
         {
             return Results.BadRequest(new { error = "conversationId is required." });
@@ -32,7 +39,7 @@ public static class HandoffRequestEndpoints
             Reason = request.Reason
         };
 
-        var result = await useCase.ExecuteAsync(handoffRequest, cancellationToken);
+        var result = await useCase.ExecuteAsync(handoffRequest, idempotencyKey, cancellationToken);
 
         return result switch
         {

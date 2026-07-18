@@ -9,11 +9,13 @@ public class RecordHandoffRequestUseCase(
     ILogger<RecordHandoffRequestUseCase> logger) : IRecordHandoffRequestUseCase
 {
     public async Task<RecordHandoffRequestResult> ExecuteAsync(
-        HandoffRequestRecord request, CancellationToken cancellationToken)
+        HandoffRequestRecord request,
+        string idempotencyKey,
+        CancellationToken cancellationToken)
     {
         try
         {
-            await repository.InsertAsync(request, cancellationToken);
+            await repository.InsertAsync(request, idempotencyKey, cancellationToken);
             return RecordHandoffRequestResult.Recorded;
         }
         catch (HandoffRequestRepositoryUnavailableException ex)
