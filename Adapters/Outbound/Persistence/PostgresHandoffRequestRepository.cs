@@ -18,10 +18,10 @@ public class PostgresHandoffRequestRepository(
 
     private const string InsertSql = """
         INSERT INTO conversation.handoffs
-            (conversation_id, reason, target_queue, metadata, idempotency_key)
+            (tenant_id, conversation_id, reason, target_queue, metadata, idempotency_key)
         VALUES
-            (@conversation_id, @reason, @target_queue, @metadata::jsonb, @idempotency_key)
-        ON CONFLICT (idempotency_key) DO NOTHING;
+            (@tenant_id, @conversation_id, @reason, @target_queue, @metadata::jsonb, @idempotency_key)
+        ON CONFLICT (tenant_id, idempotency_key) DO NOTHING;
         """;
 
     public async Task InsertAsync(
@@ -29,6 +29,7 @@ public class PostgresHandoffRequestRepository(
         string idempotencyKey,
         CancellationToken cancellationToken)
     {
+        var tenantId = Guid.Parse(tenantContext.TenantId);
         var metadata = JsonSerializer.Serialize(new
         {
             tenantId = tenantContext.TenantId,
@@ -39,6 +40,7 @@ public class PostgresHandoffRequestRepository(
             await EnsureSchemaAsync(cancellationToken);
             await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
             await using var command = new NpgsqlCommand(InsertSql, connection);
+            command.Parameters.AddWithValue("tenant_id", tenantId);
             command.Parameters.AddWithValue("conversation_id", SeedConversationId);
             command.Parameters.AddWithValue("reason", request.Reason);
             command.Parameters.AddWithValue("target_queue", TargetQueue);
@@ -60,15 +62,22 @@ public class PostgresHandoffRequestRepository(
         {
             if (_schemaReady) return;
             const string sql = """
+                ALTER TABLE conversation.handoffs ADD COLUMN IF NOT EXISTS tenant_id uuid;
                 ALTER TABLE conversation.handoffs ADD COLUMN IF NOT EXISTS idempotency_key text;
-                CREATE UNIQUE INDEX IF NOT EXISTS ux_handoffs_idempotency_key
-                    ON conversation.handoffs (idempotency_key);
+                DROP INDEX IF EXISTS conversation.ux_handoffs_idempotency_key;
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_handoffs_tenant_idempotency_key
+                    ON conversation.handoffs (tenant_id, idempotency_key);
+                CREATE INDEX IF NOT EXISTS idx_handoffs_tenant_status_requested
+                    ON conversation.handoffs (tenant_id, status, requested_at DESC);
                 """;
             await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
             await using var command = new NpgsqlCommand(sql, connection);
             await command.ExecuteNonQueryAsync(cancellationToken);
             _schemaReady = true;
         }
-        finally { _schemaLock.Release(); }
+        finally
+        {
+            _schemaLock.Release();
+        }
     }
 }
