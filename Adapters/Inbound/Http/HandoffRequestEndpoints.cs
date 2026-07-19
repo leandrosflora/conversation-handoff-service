@@ -15,16 +15,23 @@ public static class HandoffRequestEndpoints
 
     private static async Task<IResult> HandleAsync(
         HandoffRequestDto request,
-        HttpRequest httpRequest,
+        HttpContext httpContext,
         IRecordHandoffRequestUseCase useCase,
         TenantContext tenantContext,
         PlatformMetrics metrics,
         CancellationToken cancellationToken)
     {
-        var tenantId = httpRequest.Headers["X-Tenant-Id"].ToString();
-        var idempotencyKey = httpRequest.Headers["Idempotency-Key"].ToString();
-        if (string.IsNullOrWhiteSpace(tenantId))
-            return Results.BadRequest(new { error = "X-Tenant-Id header is required." });
+        if (!TenantContext.TryResolve(
+                httpContext.User,
+                httpContext.Request.Headers["X-Tenant-Id"].ToString(),
+                out var tenantId))
+        {
+            return Results.Json(
+                new { error = "X-Tenant-Id must be a UUID and match the signed tenant_id claim." },
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        var idempotencyKey = httpContext.Request.Headers["Idempotency-Key"].ToString();
         if (string.IsNullOrWhiteSpace(idempotencyKey))
             return Results.BadRequest(new { error = "Idempotency-Key header is required." });
         if (string.IsNullOrWhiteSpace(request.ConversationId))
