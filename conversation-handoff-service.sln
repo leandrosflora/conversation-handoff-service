@@ -5,7 +5,7 @@ VisualStudioVersion = 17.14.37411.7
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "conversation-handoff-service", "conversation-handoff-service.csproj", "{A54D1520-A577-4A73-BD53-08BE22B8141D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "conversation-handoff-service.Tests", "..\conversation-handoff-service.Tests\conversation-handoff-service.Tests.csproj", "{B97AE59C-B0EA-4BAD-80CF-0544B7DEB11D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "conversation-handoff-service.Tests", "conversation-handoff-service.Tests\conversation-handoff-service.Tests.csproj", "{B97AE59C-B0EA-4BAD-80CF-0544B7DEB11D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

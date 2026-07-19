@@ -6,6 +6,15 @@
     <RootNamespace>conversation_handoff_service</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <!-- conversation-handoff-service.Tests lives inside this project's directory tree - the
+         SDK's default glob would otherwise sweep its .cs files into this project's compile
+         items too. -->
+    <Compile Remove="conversation-handoff-service.Tests\**" />
+    <Content Remove="conversation-handoff-service.Tests\**" />
+    <EmbeddedResource Remove="conversation-handoff-service.Tests\**" />
+    <None Remove="conversation-handoff-service.Tests\**" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.28" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.28" />
     <PackageReference Include="Npgsql" Version="8.0.6" />
