@@ -66,8 +66,7 @@ public class PostgresHandoffRequestRepository(
                 ALTER TABLE conversation.handoffs ADD COLUMN IF NOT EXISTS idempotency_key text;
                 DROP INDEX IF EXISTS conversation.ux_handoffs_idempotency_key;
                 CREATE UNIQUE INDEX IF NOT EXISTS ux_handoffs_tenant_idempotency_key
-                    ON conversation.handoffs (tenant_id, idempotency_key)
-                    WHERE idempotency_key IS NOT NULL;
+                    ON conversation.handoffs (tenant_id, idempotency_key);
                 CREATE INDEX IF NOT EXISTS idx_handoffs_tenant_status_requested
                     ON conversation.handoffs (tenant_id, status, requested_at DESC);
                 """;
