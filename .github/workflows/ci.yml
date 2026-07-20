@@ -12,6 +12,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # PostgresHandoffRequestRepositoryFixture (via Testcontainers) mounts the real
+      # conversational-ai-postgres-init.sql from conversational-ai-demo-arch rather than a
+      # hand-rolled test schema, and finds it by walking up from the test assembly directory
+      # looking for a "conversational-ai-demo-arch" sibling - matching the layout every repo
+      # shares one directory level up in local multi-repo development. Checking it out nested
+      # under this repo's own workspace root reproduces that lookup successfully in CI.
+      - uses: actions/checkout@v4
+        with:
+          repository: leandrosflora/conversational-ai-demo-arch
+          path: conversational-ai-demo-arch
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
