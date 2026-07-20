@@ -5,7 +5,9 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using JsonWebToken = Microsoft.IdentityModel.JsonWebTokens.JsonWebToken;
 
 namespace conversation_handoff_service.Platform;
 
@@ -14,7 +16,15 @@ public sealed class InternalAuthOptions
     public const string SectionName = "InternalAuth";
     public string Issuer { get; init; } = "conversational-ai-platform";
     public string ServiceName { get; init; } = "conversation-handoff-service";
-    public string SigningKey { get; init; } = string.Empty;
+
+    /// <summary>Audience (callee service name) -> secret used to sign outbound tokens to that audience.</summary>
+    public Dictionary<string, string> OutboundSecrets { get; init; } = new();
+
+    /// <summary>Caller (issuer service name) -> secret used to validate inbound tokens from that caller.</summary>
+    public Dictionary<string, string> InboundSecrets { get; init; } = new();
+
+    public static bool HasValidSecret(string? secret) =>
+        !string.IsNullOrEmpty(secret) && Encoding.UTF8.GetByteCount(secret) >= 32;
 }
 
 public sealed class TenantContext
@@ -70,6 +80,51 @@ public sealed class TenantContext
     }
 }
 
+/// <summary>
+/// conversation-handoff-service does not currently call any other service, so OutboundSecrets is
+/// expected to be empty and this is never invoked in production. Kept implemented (rather than
+/// removed) so the platform code stays symmetric with the other services sharing this design and
+/// is ready to use unmodified the day this service needs to call out to a peer.
+/// </summary>
+public sealed class InternalTokenService(IOptions<InternalAuthOptions> options)
+{
+    public string CreateToken(string audience, string tenantId)
+    {
+        var value = options.Value;
+        if (!value.OutboundSecrets.TryGetValue(audience, out var secret) || !InternalAuthOptions.HasValidSecret(secret))
+        {
+            throw new InvalidOperationException(
+                $"InternalAuth:OutboundSecrets:{audience} must be configured with at least 32 UTF-8 bytes.");
+        }
+        if (!TenantContext.TryNormalize(tenantId, out var canonicalTenant))
+        {
+            throw new ArgumentException("Tenant ID must be a non-empty UUID.", nameof(tenantId));
+        }
+
+        var now = DateTime.UtcNow;
+        var credentials = new SigningCredentials(
+            new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret)),
+            SecurityAlgorithms.HmacSha256);
+        var header = new JwtHeader(credentials);
+        header["kid"] = value.ServiceName;
+        var claims = new List<Claim>
+        {
+            new(JwtRegisteredClaimNames.Sub, value.ServiceName),
+            new(TenantContext.ClaimType, canonicalTenant),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("n"))
+        };
+        var payload = new JwtPayload(
+            issuer: value.Issuer,
+            audience: audience,
+            claims: claims,
+            notBefore: now,
+            expires: now.AddMinutes(5),
+            issuedAt: null);
+        var token = new JwtSecurityToken(header, payload);
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+}
+
 public sealed class PlatformMetrics
 {
     private readonly ConcurrentDictionary<string, long> _values = new();
@@ -93,10 +148,8 @@ public static class PlatformExtensions
         var auth = configuration.GetSection(InternalAuthOptions.SectionName).Get<InternalAuthOptions>() ?? new();
         services.Configure<InternalAuthOptions>(configuration.GetSection(InternalAuthOptions.SectionName));
         services.AddSingleton<TenantContext>();
+        services.AddSingleton<InternalTokenService>();
         services.AddSingleton<PlatformMetrics>();
-        var key = Encoding.UTF8.GetByteCount(auth.SigningKey) >= 32
-            ? auth.SigningKey
-            : "invalid-missing-internal-auth-signing-key-32-bytes";
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
         {
             options.MapInboundClaims = false;
@@ -107,10 +160,35 @@ public static class PlatformExtensions
                 ValidateAudience = true,
                 ValidAudience = auth.ServiceName,
                 ValidateIssuerSigningKey = true,
-                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key)),
+                IssuerSigningKeyResolver = (_, _, kid, _) =>
+                {
+                    if (kid is null
+                        || !auth.InboundSecrets.TryGetValue(kid, out var secret)
+                        || !InternalAuthOptions.HasValidSecret(secret))
+                    {
+                        return Array.Empty<SecurityKey>();
+                    }
+                    return new SecurityKey[] { new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret)) };
+                },
                 ValidateLifetime = true,
                 ClockSkew = TimeSpan.FromSeconds(30),
                 NameClaimType = JwtRegisteredClaimNames.Sub
+            };
+            options.Events = new JwtBearerEvents
+            {
+                OnTokenValidated = context =>
+                {
+                    var kid = (context.SecurityToken as JsonWebToken)?.Kid;
+                    var sub = context.Principal?.FindFirstValue(JwtRegisteredClaimNames.Sub);
+                    if (!string.Equals(kid, sub, StringComparison.Ordinal))
+                    {
+                        context.HttpContext.RequestServices
+                            .GetRequiredService<PlatformMetrics>()
+                            .Increment("platform_internal_auth_failures_total", ("reason", "kid_sub_mismatch"));
+                        context.Fail("Token kid header does not match sub claim.");
+                    }
+                    return Task.CompletedTask;
+                }
             };
         });
         services.AddAuthorization(options =>
