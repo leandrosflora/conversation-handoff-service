@@ -28,7 +28,11 @@ public static class TestAuth
         var token = new JwtSecurityToken(
             issuer: Issuer,
             audience: Audience,
-            claims: [new Claim(JwtRegisteredClaimNames.Sub, "test-caller")],
+            claims:
+            [
+                new Claim(JwtRegisteredClaimNames.Sub, "test-caller"),
+                new Claim("tenant_id", TenantId)
+            ],
             notBefore: now,
             expires: now.AddMinutes(5),
             signingCredentials: new SigningCredentials(
