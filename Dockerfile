@@ -7,7 +7,7 @@ RUN dotnet restore conversation-handoff-service.csproj
 COPY . .
 RUN dotnet publish conversation-handoff-service.csproj -c Release -o /app/publish --no-restore
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 COPY --from=build /app/publish .
 
