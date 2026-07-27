@@ -23,7 +23,7 @@ jobs:
           repository: leandrosflora/conversational-ai-demo-arch
           path: conversational-ai-demo-arch
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
           # setup-dotnet's cache:true hard-fails ("unable to cache dependencies") when its
