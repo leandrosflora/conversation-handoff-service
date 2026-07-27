@@ -10,7 +10,7 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # PostgresHandoffRequestRepositoryFixture (via Testcontainers) mounts the real
       # conversational-ai-postgres-init.sql from conversational-ai-demo-arch rather than a
@@ -18,7 +18,7 @@ jobs:
       # looking for a "conversational-ai-demo-arch" sibling - matching the layout every repo
       # shares one directory level up in local multi-repo development. Checking it out nested
       # under this repo's own workspace root reproduces that lookup successfully in CI.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: leandrosflora/conversational-ai-demo-arch
           path: conversational-ai-demo-arch
